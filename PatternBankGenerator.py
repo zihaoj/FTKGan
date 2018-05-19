@@ -1,25 +1,30 @@
 ########################################################################################
 ###  Zihao's code for pattern bank generation of different det config using "fullsim"
 ###  Detector demonstrations see: DetWithModules.ipynb
-###  
 ########################################################################################
 
+import time
+import pickle
+import numpy as np
+import math
+import matplotlib
+import matplotlib.pyplot as plt
+import os
 
 from TrackingToy.TrackHelper import getPhiCircle
 from TrackingToy.TrackHelper import drawTrack
 from TrackingToy.detectorGeo import detectorGeo
 from TrackingToy.TrackHelper import patternID
-import pickle
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-import os
 
 
-def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer ):
 
+def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, banktype, random=True ):
+
+    if random:
+        np.random.seed( int(time.time()) )
+    else:
+        np.random.seed( 10 )
     
-
     '''
     pattern bank generation for a detector specification 
 
@@ -31,6 +36,7 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer ):
     nModPerLayer:  list[int], number of modules per layer
     phiRange: list[float], phi range of the generated tower
     nSSperLayer: list[int], number of super strips per layer
+    banktype: str,  useage of the bank: train or test?
 
     '''
 
@@ -60,6 +66,7 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer ):
 
     # The pattern bank
     patternBank = {}
+    patternBankTrigSeq = {}
 
     # For plotting
     passedTracks = 0
@@ -84,11 +91,17 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer ):
         passedTracks += 1
         hitsWithSSIDs = detGeo.addSSIDs(hitList)
         thisSSIDs = []
+        thisSSIDs_trig = [ [] for i in range(len(nSSperLayer)) ]
+        
         for _ in range(len(rDet)): thisSSIDs.append([])
             
         for hinfo in hitsWithSSIDs:
             layer = int(hinfo[1])
             thisSSIDs[layer].append(hinfo[5])
+
+            center = 1./float(nSSperLayer[layer])*(phiRange[1]-phiRange[0])/2
+            rad = hinfo[5]/float(nSSperLayer[layer])*(phiRange[1]-phiRange[0]) +center
+            thisSSIDs_trig[layer] = [math.cos(rad), math.sin(rad) ]
             
         goodTrack = True
         for layItr, layerSSIDs in enumerate(thisSSIDs):
@@ -102,9 +115,12 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer ):
                     thisSSIDs[layItr].pop(-1)
         if not goodTrack: continue
         thisPatternID = patternID(thisSSIDs,nSSperLayer)
-                            
+
+        
         if thisPatternID not in patternBank:
             patternBank[thisPatternID] = 0
+            ## we also create a map from real number thisPatternID -> trig transformed sequence ssid -> [cos(ssid/nssid*phirange), sin(ssid/nssid*phirange)  ]
+            patternBankTrigSeq [ thisPatternID ] = np.array(thisSSIDs_trig)
 
         patternBank[thisPatternID] += 1
         
@@ -115,33 +131,93 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer ):
             patternBankSize     = np.append(patternBankSize, len(patternBank))
 
 
-    bankname = "beamX{!s}_beamY{!s}_Size{!s}_Phi{!s}-{!s}".format(beamX, beamY, ntrk, round(phiRange[0],2), round(phiRange[1],2))
+    bankname = "beamX{!s}_beamY{!s}_Size{!s}_Phi{!s}-{!s}_{!s}".format(beamX, beamY, ntrk, round(phiRange[0],2), round(phiRange[1],2), banktype)
+
+    ### saving the pattern bank
+    patternsBankToLoad = {}
+    patternsBankToLoad["rDet"]         = rDet
+    patternsBankToLoad["nSSperLayer"]  = nSSperLayer
+    patternsBankToLoad["beamX"]        = beamX
+    patternsBankToLoad["beamY"]        = beamY
+    patternsBankToLoad["phi_low"]      = phiRange[0]
+    patternsBankToLoad["phi_high"]     = phiRange[1]    
+    patternsBankToLoad["bank"]         = patternBank
+    patternsBankToLoad["bankTrigSeq"]  = patternBankTrigSeq
+    patternsBankToLoad["passedTracks"] = passedTracksSamples
+    patternsBankToLoad["bankSize"]     = patternBankSize
+
+    with open('PatternBanks/Bank'+bankname+'.pickle', 'wb') as handle:
+        pickle.dump(patternsBankToLoad, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
     ### sanity check plots
+    # npat vs ntrk plot
     plt.plot(passedTracksSamples,patternBankSize,"k")
     plt.xlabel("Tracks")
     plt.ylabel("nPatterns")
     plt.savefig( "FigBanks/NPat_Vs_NTrk_" + bankname+ ".pdf" )
+    plt.close()
 
-    ### saving the pattern bank
-    patternsBankToLoad = {}
-    patternsBankToLoad["bank"]         = patternBank
-    patternsBankToLoad["passedTracks"] = passedTracksSamples
-    patternsBankToLoad["bankSize"]     = patternBankSize
+    # pick 10 tracks to visualize
+    solutions_pattGen
+    fig, ax = plt.subplots(1, figsize=(10,10))
+    ax.set_xlim((0, 4))
+    ax.set_ylim((-2, 2))
 
-    with open('Bank'+bankname+'.pickle', 'wb') as handle:
-        pickle.dump(patternsBankToLoad, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    detGeo.drawTower(ax,detailed=True)
+    for sItr in range(10):
+        s = solutions_pattGen[sItr]
+
+        if not detGeo.hitsAllInTower(s[6]): continue
+
+        color = "b" if (s[4] < 0) else "r"
+        plt.plot(s[0],s[1],color)
+        plt.plot( [detGeo.beamX, s[0][0]], [detGeo.beamY, s[1][0]], color   )
+        
+        hitList = []
+        realHits = s[6]
+        for rHit in realHits:
+            # hitITr / Layer / phiID / hit-X / hit-Y
+            hitList.append(  [1,rHit[0],rHit[1],rHit[2], rHit[3]] )
 
 
+        hitsWithSSIDs = detGeo.addSSIDs(hitList)
+        
+        thisSSIDs = np.array(hitsWithSSIDs)
+        thisSSIDs = np.delete(hitsWithSSIDs,0,axis=1) # rm hitID
+        thisSSIDs = np.delete(thisSSIDs,1,axis=1)     # rm phiID
+        thisSSIDs = np.delete(thisSSIDs,1,axis=1)     # rm hit X
+        thisSSIDs = np.delete(thisSSIDs,1,axis=1)     # rm hit Y
 
+        plt.plot(s[0],s[1],'ko')
+        detGeo.drawSSIDs(ax,thisSSIDs)
+
+        for ih, rH in enumerate(realHits):
+            plt.plot(rH[2],rH[3],'bo')
+    plt.savefig( "FigBanks/Visualization_" + bankname+ ".pdf" )
+    plt.close()
+
+    
 def __main__():
 
     rDet         = np.array([0.5, 1.0, 1.5, 2, 2.5,3.0])
     nModPerLayer = np.array([14,   28,  42, 56, 70, 84])
-    phiRange = (-3*np.pi/12, 3*np.pi/12)
-    nSSperLayer=[30,30,30,30,30,30]
+    phiRange     = (-3*np.pi/12, 3*np.pi/12)
+    nSSperLayer  = [30,30,30,30,30,30]
+    ntrk         = int(1e4)
 
-    PattGen( ntrk=int(1e4), beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer )
+    beamX = [0, 0.005, 0.01, 0.015, 0.02]
+    beamY = [0, 0.005, 0.01, 0.015, 0.02]
 
+    PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
+    
+    '''
+    for x in beamX:
+        for y in beamY:
+            #PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
+            PattGen( ntrk=ntrk, beamX=x, beamY=y, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "test" )    
+    '''
 
+    
+        
 __main__()
     
