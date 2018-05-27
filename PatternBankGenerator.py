@@ -47,6 +47,9 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
 
 
     ntrk_divide_5 = int(ntrk/5)
+    trk_q     = []
+    trk_ptInv = []
+    trk_phi   = []    
     print ("Making Patterns: {!s} trks, beamX={!s}, beamY={!s}" ).format(ntrk, beamX, beamY)
 
     solutions_pattGen = []
@@ -60,13 +63,21 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
         q     = 2*np.random.randint(0,2,1)[0]-1
         pt = 1./ptInv
 
+        trk_ptInv.append(ptInv)
+        trk_q.append(q)
+        trk_phi.append(phi)
+
         xHits, yHits, modulesHit, actualHits = detGeo.getHits(pt,phi,q)
         solutions_pattGen.append([xHits,yHits,pt,phi,q,modulesHit,actualHits])
 
 
     # The pattern bank
-    patternBank = {}
+    patternBank        = {}
     patternBankTrigSeq = {}
+    patternBankq       = {}
+    patternBankptInv   = {}
+    patternBankphi     = {}
+    discontinuity = []
 
     # For plotting
     passedTracks = 0
@@ -91,18 +102,20 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
         passedTracks += 1
         hitsWithSSIDs = detGeo.addSSIDs(hitList)
         thisSSIDs = []
+        thisdiscontinuity = 0
         thisSSIDs_trig = [ [] for i in range(len(nSSperLayer)) ]
         
         for _ in range(len(rDet)): thisSSIDs.append([])
             
-        for hinfo in hitsWithSSIDs:
+        for ihit, hinfo in enumerate(hitsWithSSIDs):
             layer = int(hinfo[1])
             thisSSIDs[layer].append(hinfo[5])
 
-            center = 1./float(nSSperLayer[layer])*(phiRange[1]-phiRange[0])/2
-            rad = hinfo[5]/float(nSSperLayer[layer])*(phiRange[1]-phiRange[0]) +center
+            shift = (phiRange[1]-phiRange[0])/float(nSSperLayer[layer])/2
+            rad = hinfo[5]/float(nSSperLayer[layer])*(phiRange[1]-phiRange[0]) + shift + phiRange[0]
+
             thisSSIDs_trig[layer] = [math.cos(rad), math.sin(rad) ]
-            
+
         goodTrack = True
         for layItr, layerSSIDs in enumerate(thisSSIDs):
             if len(layerSSIDs) == 0:
@@ -114,17 +127,32 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
                 while(not len(thisSSIDs[layItr]) == 1):
                     thisSSIDs[layItr].pop(-1)
         if not goodTrack: continue
+        
         thisPatternID = patternID(thisSSIDs,nSSperLayer)
 
+        for layItr, layerSSIDs in enumerate(thisSSIDs):
+            if layItr>0:
+                thisdiscontinuity += abs(thisSSIDs[layItr][0] -thisSSIDs[layItr-1][0] )
         
         if thisPatternID not in patternBank:
             patternBank[thisPatternID] = 0
             ## we also create a map from real number thisPatternID -> trig transformed sequence ssid -> [cos(ssid/nssid*phirange), sin(ssid/nssid*phirange)  ]
             patternBankTrigSeq [ thisPatternID ] = np.array(thisSSIDs_trig)
+            patternBankq[thisPatternID]     = []
+            patternBankptInv[thisPatternID] = []
+            patternBankphi[thisPatternID]   = []
+            
+
+        discontinuity.append( thisdiscontinuity)
 
         patternBank[thisPatternID] += 1
-        
-        
+        patternBankq[thisPatternID].append( trk_q[sItr] )
+        patternBankptInv[thisPatternID].append( trk_ptInv[sItr] )
+        patternBankphi[thisPatternID].append(trk_phi[sItr])
+
+        print sum(discontinuity)/len(discontinuity)
+
+                
         # Statistics
         if passedTracks %10 == 0:
             passedTracksSamples = np.append(passedTracksSamples,passedTracks)
@@ -145,6 +173,9 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
     patternsBankToLoad["bankTrigSeq"]  = patternBankTrigSeq
     patternsBankToLoad["passedTracks"] = passedTracksSamples
     patternsBankToLoad["bankSize"]     = patternBankSize
+    patternsBankToLoad["ptInv"]        = patternBankptInv
+    patternsBankToLoad["q"]            = patternBankq
+    patternsBankToLoad["phi"]          = patternBankphi
 
     with open('PatternBanks/Bank'+bankname+'.pickle', 'wb') as handle:
         pickle.dump(patternsBankToLoad, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -203,7 +234,7 @@ def __main__():
     nModPerLayer = np.array([14,   28,  42, 56, 70, 84])
     phiRange     = (-3*np.pi/12, 3*np.pi/12)
     nSSperLayer  = [30,30,30,30,30,30]
-    ntrk         = int(1e4)
+    ntrk         = int(1e2)
 
     beamX = [0, 0.005, 0.01, 0.015, 0.02]
     beamY = [0, 0.005, 0.01, 0.015, 0.02]
@@ -216,8 +247,6 @@ def __main__():
             #PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
             PattGen( ntrk=ntrk, beamX=x, beamY=y, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "test" )    
     '''
-
-    
         
 __main__()
     

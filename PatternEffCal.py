@@ -9,6 +9,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import os
 from copy import deepcopy
+from collections import OrderedDict
+from operator import itemgetter
 
 
 
@@ -17,27 +19,60 @@ def Effcal_pairwise(bankA, bankB):
     pairwise efficiency cal
     input:
 
-    bankA: dic, first bank
-    bankB: dic, second bank
+    bankA: dic, target bank
+    bankB: dic, baseline bank
 
     returns:
     an efficiency in float
     '''
 
-    patA = sorted(bankA["bank"].keys() )
-    patB = sorted(bankB["bank"].keys() )
+    ## First make sure we get the same number of patterns for bankB and bankA
+    nBankA = len(bankA["bank"])    
+    nBankB = len(bankB["bank"])
 
-    match = 0.0
+    patB = sorted(bankB["bank"].keys() )
+    patA = []
+
+    if nBankA>nBankB:
+        d = OrderedDict(sorted(bankA["bank"].items(), key=itemgetter(1), reverse=True))
+        for ipat in range(nBankB):
+            patA.append( d.keys()[ipat]  )
+        patA = sorted(patA)
+                            
+    else:
+        patA = sorted(bankA["bank"].keys() )
+
+
+    matched_patterns = 0.0
+    matched_trks = 0.0
+
+    All_InvpT     = np.array([ v for tup in bankB["ptInv"].values() for v in tup])
+    All_q         = np.array([ v for tup in bankB["q"].values() for v in tup])
+    All_phi       = np.array([ v for tup in bankB["phi"].values() for v in tup])    
+
+    Matched_InvpT = []
+    Matched_q     = []
+    Matched_phi   = []    
 
     ## keep two pointers and move forward
     i = 0
     j = 0
     while (i < len(patA) and j < len(patB) ):
 
-        if patA[i] == patB[j]:
-            match += 1
+        if int(patA[i]) == int(patB[j]):
+
+            for invpt in bankB["ptInv"][patB[j]]:
+                Matched_InvpT.append( invpt   )
+            for q in bankB["q"][patB[j]]:
+                Matched_q.append(  q )
+            for phi in bankB["phi"][patB[j]]:
+                Matched_phi.append( phi )
+            
+            matched_patterns += 1
+            matched_trks     += bankB["bank"][ patB[j] ]
             i += 1
             j += 1
+
             
         elif patA[i] < patB[j] and i != len(patA):
             i += 1
@@ -45,9 +80,23 @@ def Effcal_pairwise(bankA, bankB):
         elif patA[i] > patB[j] and j != len(patB):
             j += 1
 
-    print match/len(patB)
+    plt.hist(All_phi, 50,  normed = 0, edgecolor='red', fill=False)
+    plt.hist(Matched_phi, 50,  normed = 0, edgecolor='blue', fill = False)
+    plt.show()
+            
+    plt.hist(All_InvpT, 50,  normed = 0, edgecolor='red', fill=False)
+    plt.hist(Matched_InvpT, 50,  normed = 0, edgecolor='blue', fill = False)
+    plt.show()
 
-    return match/len(patB)
+    plt.hist(All_q, 50,  normed = 0, edgecolor='red', fill=False)
+    plt.hist(Matched_q, 50,  normed = 0, edgecolor='blue', fill = False)
+    plt.show()
+    
+            
+    print matched_patterns/len(patB)
+    print matched_trks/ sum(bankB["bank"].values())
+
+    return matched_patterns/len(patB)
     
 
 def Effcal_wrt_base( bank_baseline, bank_tests ):
@@ -79,7 +128,7 @@ def Effcal_wrt_base( bank_baseline, bank_tests ):
 
 
     for t in bank_tests:
-        Effcal_pairwise(baseline, tests[t])
+        Effcal_pairwise(tests[t], baseline)
 
 
 def Effcal_XYgrid(bank_baseline):
@@ -130,12 +179,16 @@ def Effcal_XYgrid(bank_baseline):
 
 def __main__():
 
-    bank_baseline = "PatternBanks/BankbeamX0_beamY0_Size10000_Phi-0.79-0.79_train.pickle"
     bank_tests    =["PatternBanks/BankbeamX0_beamY0_Size10000_Phi-0.79-0.79_test.pickle",
                     "PatternBanks/BankbeamX0.1_beamY0_Size10000_Phi-0.79-0.79_test.pickle",
                     "PatternBanks/BankbeamX0.1_beamY0.1_Size10000_Phi-0.79-0.79_test.pickle"]
-    
+
+    bank_baseline = "PatternBanks/BankbeamX0_beamY0_Size10000_Phi-0.79-0.79_train.pickle"
+    bank_tests    =["PatternBanks/BankbeamX0_beamY0_Size10000_Phi-0.79-0.79_test.pickle"]    
+    gan_tests     = ["PatternBanks/BankGan.pickle"]
+
+    Effcal_wrt_base(bank_baseline, gan_tests)
     #Effcal_wrt_base(bank_baseline, bank_tests)
-    Effcal_XYgrid(bank_baseline)    
+    #Effcal_XYgrid(bank_baseline)    
 
 __main__()    
