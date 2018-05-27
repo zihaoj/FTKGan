@@ -77,6 +77,7 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
     patternBankq       = {}
     patternBankptInv   = {}
     patternBankphi     = {}
+    patternBankdiscontinuity  = {}
     discontinuity = []
 
     # For plotting
@@ -141,14 +142,15 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
             patternBankq[thisPatternID]     = []
             patternBankptInv[thisPatternID] = []
             patternBankphi[thisPatternID]   = []
+            patternBankdiscontinuity[ thisPatternID ] =  thisdiscontinuity
             
-
         discontinuity.append( thisdiscontinuity)
 
         patternBank[thisPatternID] += 1
         patternBankq[thisPatternID].append( trk_q[sItr] )
         patternBankptInv[thisPatternID].append( trk_ptInv[sItr] )
         patternBankphi[thisPatternID].append(trk_phi[sItr])
+        
 
         print sum(discontinuity)/len(discontinuity)
 
@@ -176,6 +178,7 @@ def PattGen( ntrk, beamX, beamY, rDet, nModPerLayer, phiRange, nSSperLayer, bank
     patternsBankToLoad["ptInv"]        = patternBankptInv
     patternsBankToLoad["q"]            = patternBankq
     patternsBankToLoad["phi"]          = patternBankphi
+    patternsBankToLoad["discontinuity"]= patternBankdiscontinuity
 
     with open('PatternBanks/Bank'+bankname+'.pickle', 'wb') as handle:
         pickle.dump(patternsBankToLoad, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -234,19 +237,17 @@ def __main__():
     nModPerLayer = np.array([14,   28,  42, 56, 70, 84])
     phiRange     = (-3*np.pi/12, 3*np.pi/12)
     nSSperLayer  = [30,30,30,30,30,30]
-    ntrk         = int(1e2)
+    ntrk         = int(1e6)
 
     beamX = [0, 0.005, 0.01, 0.015, 0.02]
     beamY = [0, 0.005, 0.01, 0.015, 0.02]
 
-    PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
+    #PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
     
-    '''
     for x in beamX:
         for y in beamY:
-            #PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
+            PattGen( ntrk=ntrk, beamX=0, beamY=0, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "train" )
             PattGen( ntrk=ntrk, beamX=x, beamY=y, rDet=rDet, nModPerLayer=nModPerLayer, phiRange=phiRange, nSSperLayer=nSSperLayer, banktype = "test" )    
-    '''
         
 __main__()
     
